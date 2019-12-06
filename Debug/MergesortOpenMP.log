@@ -1,0 +1,5 @@
+﻿  parallel.cpp
+C:\Users\alexp\Desktop\Projekty Github\OpenMP\MergesortOpenMP\MergesortOpenMP\parallel.cpp(29,9): warning C4101: 'from': unreferenced local variable
+C:\Users\alexp\Desktop\Projekty Github\OpenMP\MergesortOpenMP\MergesortOpenMP\parallel.cpp(29,15): warning C4101: 'to': unreferenced local variable
+C:\Users\alexp\Desktop\Projekty Github\OpenMP\MergesortOpenMP\MergesortOpenMP\parallel.cpp(111,59): error C3001: 'task': expected an OpenMP directive name
+C:\Users\alexp\Desktop\Projekty Github\OpenMP\MergesortOpenMP\MergesortOpenMP\parallel.cpp(113,59): error C3001: 'task': expected an OpenMP directive name
