@@ -1,6 +1,0 @@
-﻿  parallel.cpp
-C:\Users\alexp\Desktop\Projekty Github\OpenMP\MergesortOpenMP\MergesortOpenMP\parallel.cpp(54,12): warning C4244: 'argument': conversion from 'time_t' to 'unsigned int', possible loss of data
-C:\Users\alexp\Desktop\Projekty Github\OpenMP\MergesortOpenMP\MergesortOpenMP\parallel.cpp(53,9): warning C4101: 'from': unreferenced local variable
-C:\Users\alexp\Desktop\Projekty Github\OpenMP\MergesortOpenMP\MergesortOpenMP\parallel.cpp(53,15): warning C4101: 'to': unreferenced local variable
-C:\Users\alexp\Desktop\Projekty Github\OpenMP\MergesortOpenMP\MergesortOpenMP\parallel.cpp(80): error C4700: uninitialized local variable 'i' used
-C:\Users\alexp\Desktop\Projekty Github\OpenMP\MergesortOpenMP\MergesortOpenMP\parallel.cpp(81): error C4700: uninitialized local variable 'j' used
