@@ -5,15 +5,15 @@
 #include <cstring>
 #include <algorithm> 
 
-#define DBG 0
+#define DBG 1
 
-#define NUMBERS_BIG 200 //2000000
-#define NUMBERS_DBG 10
+#define NUMBERS_BIG 18000000 //2000000
+#define NUMBERS_DBG 18000000
 
-#define MAX_BIG 100 //1000000
-#define MAX_DBG 10
+#define MAX_BIG 1000000 //1000000
+#define MAX_DBG 1000000
 
-#define NUM_THREADS 2
+#define NUM_THREADS 4
 #define NUMBERS ((DBG == 1) ? NUMBERS_DBG : NUMBERS_BIG)
 #define MAX_NUMBER ((DBG == 1) ? MAX_DBG : MAX_BIG)
 
@@ -119,60 +119,94 @@ void mergeSort(int* arr, int left_start, int right_start) {
 void mergeSortParallel(int* arr, int left_start, int right_start) {
 	if (left_start < right_start)
 	{
-		int m = left_start + (right_start - left_start) / 2;
-#pragma omp single 
-		{
-			printf("\nthread=%d, num_threads=%d <%d, %d>", omp_get_thread_num(), omp_get_num_threads(), left_start, m);
-#pragma omp task
+		if (right_start - left_start > 100000) {
+			int num = omp_get_thread_num();
+			int threads = omp_get_num_threads();
+
+			int m = left_start + (right_start - left_start) / 2;
+#pragma omp task		
 			{
+				if (DBG) {
+					printf("\nthread=%d, num_threads=%d <%d, %d>", num, threads, left_start, m);
+					fflush(stdout);
+				}
 				mergeSortParallel(arr, left_start, m);
 			}
-			printf("\nthread=%d, num_threads=%d <%d, %d>", omp_get_thread_num(), omp_get_num_threads(), m + 1, right_start);
+
 #pragma omp task
 			{
+				if (DBG) {
+					printf("\nthread=%d, num_threads=%d <%d, %d>", num, threads, m + 1, right_start);
+					fflush(stdout);
+				}
 				mergeSortParallel(arr, m + 1, right_start);
 			}
-		}
 #pragma omp taskwait
-		merge(arr, left_start, m, right_start);
-		printf("\nthread=%d, num_threads=%d skonczylem", omp_get_thread_num(), omp_get_num_threads());
+			if (DBG) {
+				printf("\nthread=%d, num_threads=%d skonczylem", num, threads);
+				fflush(stdout);
+			}
+			merge(arr, left_start, m, right_start);
+		}
+		else {
+			if (DBG) {
+				printf("\n<%d, %d> licze dalej sekwencyjnie", left_start, right_start);
+				fflush(stdout);
+			}
+			mergeSort(arr, left_start, right_start);
+		}
 	}
 }
 
 
 
 int main() {
+	printf("\nThreads: %d, Numbers: %d\n", NUM_THREADS, NUMBERS);
 	time_t time1, time2;
 	omp_set_nested(1);
 
-	int* numbersSeq = (int*)malloc(NUMBERS * sizeof(int));
+	//int* numbersSeq = (int*)malloc(NUMBERS * sizeof(int));
 	int* numbersPar = (int*)malloc(NUMBERS * sizeof(int));
-	fillArrayWithNumbersParallel(numbersSeq);
-	memcpy(numbersPar, numbersSeq, NUMBERS * sizeof(int));
-	std::sort(numbersSeq, numbersSeq + NUMBERS);
-
-	//time(&time1);
-	//mergeSort(numbersSeq, 0, NUMBERS - 1);
-	//time(&time2);
-	//printf("\nTime in seconds (mergesort sequential): %f", difftime(time2, time1));
+	fillArrayWithNumbersParallel(numbersPar);
+	//memcpy(numbersPar, numbersSeq, NUMBERS * sizeof(int));
+	//std::sort(numbersSeq, numbersSeq + NUMBERS);
+	///*
+	if (!DBG) {
+		time(&time1);
+		//mergeSort(numbersSeq, 0, NUMBERS - 1);
+		time(&time2);
+		printf("\nTime in seconds (mergesort sequential): %f", difftime(time2, time1));
+	}
+	//*/
 
 	time(&time1);
+	try {
 #pragma omp parallel num_threads(NUM_THREADS)
-	{
-		mergeSortParallel(numbersPar, 0, NUMBERS - 1);
+		//num_threads(NUM_THREADS)
+#pragma omp single
+		{
+			mergeSortParallel(numbersPar, 0, NUMBERS - 1);
+		}
+	}
+	catch (...) {
+		printf("!!!!WYJATEK!!!!");
 	}
 	time(&time2);
 	printf("\nTime in seconds (mergesort parallel): %f", difftime(time2, time1));
 
 	bool arraysNotEquals = false;
 	for (int i = 0; i < NUMBERS; i++) {
-		if (numbersSeq[i] != numbersPar[i]) {
-			arraysNotEquals = true;
-			printf("\nseq: %d, par: %d", numbersSeq[i], numbersPar[i]);
-		}
+		//if (numbersSeq[i] != numbersPar[i]) {
+		//	arraysNotEquals = true;
+			//printf("\nseq: %d, par: %d", numbersSeq[i], numbersPar[i]);
+		//}
 	}
-	if (DBG || arraysNotEquals) {
-		printArrayDiff(numbersSeq, numbersPar, NUMBERS);
+	if (!DBG && arraysNotEquals) {
+		//printArrayDiff(numbersSeq, numbersPar, NUMBERS);
+		printf("\nnot equal");
+	}
+	else {
+		printf("\nequal");
 	}
 
 	return 0;
