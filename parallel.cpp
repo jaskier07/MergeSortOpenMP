@@ -5,17 +5,26 @@
 #include <cstring>
 #include <algorithm> 
 
-#define DBG 1
 
-#define NUMBERS_BIG 18000000 //2000000
-#define NUMBERS_DBG 18000000
+#define DBG 0
 
-#define MAX_BIG 1000000 //1000000
-#define MAX_DBG 1000000
+#define NUMBERS_BIG 100000000 //2000000
+#define NUMBERS_DBG 10
+
+#define MAX_BIG 100000 //1000000
+#define MAX_DBG 50
 
 #define NUM_THREADS 4
 #define NUMBERS ((DBG == 1) ? NUMBERS_DBG : NUMBERS_BIG)
 #define MAX_NUMBER ((DBG == 1) ? MAX_DBG : MAX_BIG)
+
+void printArrayFlat(int* A, int from, int to)
+{
+	int i;
+	for (i = from; i < to; i++) {
+		printf("%d, ", A[i]);
+	}
+}
 
 void printArray(int* A, int size)
 {
@@ -42,26 +51,32 @@ void printArrayDiff(int* A, int* B, int size)
 
 void fillArrayWithNumbersParallel(int* numbers) {
 	int i, from, to;
-	time_t time1, time2;
-	time(&time1);
-#pragma omp parallel for schedule(static, NUMBERS / NUM_THREADS) num_threads(NUM_THREADS)
+	srand(time(NULL));
+//#pragma omp parallel for schedule(static, NUMBERS / NUM_THREADS) num_threads(NUM_THREADS)
 	for (i = 0; i < NUMBERS; i++) {
 		numbers[i] = rand() % MAX_NUMBER;
 	}
-	time(&time2);
 	//printf("\nTime in seconds (fill array parallel): %f", difftime(time2, time1));
 }
 
 /* Function to merge the two haves arr[l..m] and arr[m+1..r] of array arr[] */
-void merge(int arr[], int left_start, int mid, int right_start) {
+void merge(int arr[], int left_start, int mid, int right_start, int* alloc) {
+	if (DBG) {
+		printf("\nmerge: ");
+		printArrayFlat(arr, left_start, mid);
+		printf(" with ");
+		printArrayFlat(arr, mid, right_start);
+		fflush(stdout);
+	}
 	int i, j, k;
 
 	int left_half_size = mid - left_start + 1;
 	int right_half_size = right_start - mid;
 
 	/* create temp arrays */
-	int* L = (int*)malloc(sizeof(int) * left_half_size);
-	int* R = (int*)malloc(sizeof(int) * right_half_size);
+
+	int* L = &alloc[left_start];
+	int* R = &alloc[mid + 1];
 
 	/* Copy data to temp arrays L[] and R[] */
 	for (i = 0; i < left_half_size; i++) {
@@ -89,7 +104,7 @@ void merge(int arr[], int left_start, int mid, int right_start) {
 
 	/* Copy the remaining elements of L[], if there are any */
 	while (i < left_half_size) {
-		arr[k] = L[i];
+		arr[k] =L[i];
 		i++;
 		k++;
 	}
@@ -102,24 +117,38 @@ void merge(int arr[], int left_start, int mid, int right_start) {
 	}
 }
 
-void mergeSort(int* arr, int left_start, int right_start) {
+void mergeSort(int* arr, int left_start, int right_start, int* alloc) {
 	if (left_start < right_start)
 	{
 		// Same as (l+r)/2, but avoids overflow for large l and h 
 		int m = left_start + (right_start - left_start) / 2;
 
 		// Sort first and second halves 
-		mergeSort(arr, left_start, m);
-		mergeSort(arr, m + 1, right_start);
-
-		merge(arr, left_start, m, right_start);
+		if (DBG) {
+			printf("\nl <%d, %d> ", left_start, m);
+			printArrayFlat(arr, left_start, m);
+			fflush(stdout);
+		}
+		mergeSort(arr, left_start, m, alloc);
+		if (DBG) {
+			printf("\nr <%d, %d>", m + 1, right_start);
+			printArrayFlat(arr, m + 1, right_start);
+			fflush(stdout);
+		}
+		mergeSort(arr, m + 1, right_start, alloc);
+		merge(arr, left_start, m, right_start, alloc);
+		if (DBG) {
+			printf("\nm <%d, %d>", left_start, right_start);
+			printArrayFlat(arr, left_start, right_start);
+			fflush(stdout);
+		}
 	}
 }
 
-void mergeSortParallel(int* arr, int left_start, int right_start) {
+void mergeSortParallel(int* arr, int left_start, int right_start, int* alloc) {
 	if (left_start < right_start)
 	{
-		if (right_start - left_start > 100000) {
+		if ((right_start - left_start) > (10000)) {
 			int num = omp_get_thread_num();
 			int threads = omp_get_num_threads();
 
@@ -130,7 +159,7 @@ void mergeSortParallel(int* arr, int left_start, int right_start) {
 					printf("\nthread=%d, num_threads=%d <%d, %d>", num, threads, left_start, m);
 					fflush(stdout);
 				}
-				mergeSortParallel(arr, left_start, m);
+				mergeSortParallel(arr, left_start, m, alloc);
 			}
 
 #pragma omp task
@@ -139,21 +168,21 @@ void mergeSortParallel(int* arr, int left_start, int right_start) {
 					printf("\nthread=%d, num_threads=%d <%d, %d>", num, threads, m + 1, right_start);
 					fflush(stdout);
 				}
-				mergeSortParallel(arr, m + 1, right_start);
+				mergeSortParallel(arr, m + 1, right_start, alloc);
 			}
 #pragma omp taskwait
 			if (DBG) {
 				printf("\nthread=%d, num_threads=%d skonczylem", num, threads);
 				fflush(stdout);
 			}
-			merge(arr, left_start, m, right_start);
+			merge(arr, left_start, m, right_start, alloc);
 		}
 		else {
 			if (DBG) {
 				printf("\n<%d, %d> licze dalej sekwencyjnie", left_start, right_start);
 				fflush(stdout);
 			}
-			mergeSort(arr, left_start, right_start);
+			mergeSort(arr, left_start, right_start, alloc);
 		}
 	}
 }
@@ -165,52 +194,53 @@ int main() {
 	time_t time1, time2;
 	omp_set_nested(1);
 
-	//int* numbersSeq = (int*)malloc(NUMBERS * sizeof(int));
+	int* alloc = (int*)malloc(NUMBERS * sizeof(int));
+	int* numbersSeq = (int*)malloc(NUMBERS * sizeof(int));
 	int* numbersPar = (int*)malloc(NUMBERS * sizeof(int));
-	fillArrayWithNumbersParallel(numbersPar);
-	//memcpy(numbersPar, numbersSeq, NUMBERS * sizeof(int));
-	//std::sort(numbersSeq, numbersSeq + NUMBERS);
-	///*
-	if (!DBG) {
-		time(&time1);
-		//mergeSort(numbersSeq, 0, NUMBERS - 1);
-		time(&time2);
-		printf("\nTime in seconds (mergesort sequential): %f", difftime(time2, time1));
+	fillArrayWithNumbersParallel(numbersSeq);
+	if (DBG) {
+		printArray(numbersSeq, NUMBERS);
 	}
-	//*/
-
+	memcpy(numbersPar, numbersSeq, NUMBERS * sizeof(int));
+	//std::sort(numbersSeq, numbersSeq + NUMBERS);
+	
 	time(&time1);
-	try {
+	mergeSort(numbersSeq, 0, NUMBERS - 1, alloc);
+	time(&time2);
+	printf("\nTime in seconds (mergesort sequential): %f", difftime(time2, time1));
+	if (DBG) {
+		printArray(numbersSeq, NUMBERS);
+	}
+	///*
+	free(alloc);
+	alloc = (int*)malloc(NUMBERS * sizeof(int));
+	
+	time(&time1);
 #pragma omp parallel num_threads(NUM_THREADS)
 		//num_threads(NUM_THREADS)
 #pragma omp single
 		{
-			mergeSortParallel(numbersPar, 0, NUMBERS - 1);
-		}
-	}
-	catch (...) {
-		printf("!!!!WYJATEK!!!!");
-	}
+			mergeSortParallel(numbersPar, 0, NUMBERS - 1, alloc);
+		}printf("!!!!WYJATEK!!!!");
+	
 	time(&time2);
 	printf("\nTime in seconds (mergesort parallel): %f", difftime(time2, time1));
 
-	bool arraysNotEquals = false;
-	for (int i = 0; i < NUMBERS; i++) {
-		//if (numbersSeq[i] != numbersPar[i]) {
-		//	arraysNotEquals = true;
-			//printf("\nseq: %d, par: %d", numbersSeq[i], numbersPar[i]);
-		//}
-	}
-	if (!DBG && arraysNotEquals) {
-		//printArrayDiff(numbersSeq, numbersPar, NUMBERS);
-		printf("\nnot equal");
-	}
-	else {
-		printf("\nequal");
-	}
 
+	for (int i = 0; i < NUMBERS - 1; i++) {
+		if (numbersPar[i] > numbersPar[i + 1]) {
+			printf("BLAD!!!!");
+		}
+	}
+	if (DBG) {
+		printArray(numbersPar, NUMBERS);
+	}
+	
 	return 0;
 }
 
 // optimizations:
 // 1. generating numbers in parallel
+// 2. prealokowanie pamiêci raz zamiast alokowania przy ka¿dym merge'owaniu (szybciej + wiêcej liczb)
+// 3. sections -> tasks
+// 4. parallel & sequential with threshold
