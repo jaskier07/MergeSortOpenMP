@@ -5,8 +5,8 @@
 #include <cstring>
 #include <algorithm> 
 
-
-#define DBG 1
+#define DBG 0
+#define SHOWTIME 1
 
 #define NUMBERS_BIG 100000000 //2000000
 #define NUMBERS_DBG 100
@@ -33,10 +33,6 @@ void printArray(int* A, int size)
 		printf("%d, ", A[i]);
 	}
 	printf("\n");
-}
-
-void displayInitialConfiguration() {
-	printf("\nThreads: %d, Numbers: %d\n", NUM_THREADS, NUMBERS);
 }
 
 void printTime(time_t t1, time_t t2, const char* solutionType) {
@@ -74,10 +70,9 @@ void checkIfCorrectlySorted(int* arr) {
 }
 
 /* merge sort */
-void fillArrayWithNumbersParallel(int* numbers) {
+void fillArrayWithNumbers(int* numbers) {
 	int i, from, to;
 	srand(time(NULL));
-//#pragma omp parallel for schedule(static, NUMBERS / NUM_THREADS) num_threads(NUM_THREADS)
 	for (i = 0; i < NUMBERS; i++) {
 		numbers[i] = rand() % MAX_NUMBER;
 	}
@@ -145,7 +140,7 @@ void merge(int arr[], int left_start, int mid, int right_start, int* tmp) {
 	}
 }
 
-void mergeSort(int* arr, int left_start, int right_start, int* tmp) {
+void mergeSortSequential(int* arr, int left_start, int right_start, int* tmp) {
 	if (left_start < right_start)
 	{
 		// Same as (l+r)/2, but avoids overflow for large l and h 
@@ -153,10 +148,10 @@ void mergeSort(int* arr, int left_start, int right_start, int* tmp) {
 
 		// Sort first and second halves 
 		debugPrintMergeSort(arr, left_start, m, 'l');
-		mergeSort(arr, left_start, m, tmp);
+		mergeSortSequential(arr, left_start, m, tmp);
 
 		debugPrintMergeSort(arr, m + 1, right_start, 'r');
-		mergeSort(arr, m + 1, right_start, tmp);
+		mergeSortSequential(arr, m + 1, right_start, tmp);
 
 		merge(arr, left_start, m, right_start, tmp);
 		debugPrintMergeSort(arr, left_start, right_start, 'm');
@@ -186,37 +181,39 @@ void mergeSortParallel(int* arr, int left_start, int right_start, int* tmp) {
 			merge(arr, left_start, m, right_start, tmp);
 		}
 		else {
-			mergeSort(arr, left_start, right_start, tmp);
+			mergeSortSequential(arr, left_start, right_start, tmp);
 		}
 	}
 }
 
 int main() {
-	displayInitialConfiguration();
 	omp_set_nested(1);
 
 	const int numbersSize = NUMBERS * sizeof(int);
 	time_t time1, time2;
 	int* tmp = (int*)malloc(numbersSize);
-	int* numbersSeq = (int*)malloc(numbersSize);
 	int* numbersPar = (int*)malloc(numbersSize);
-	fillArrayWithNumbersParallel(numbersSeq);
-	memcpy(numbersPar, numbersSeq, numbersSize);
-	
-	time(&time1);
-	mergeSort(numbersSeq, 0, NUMBERS - 1, tmp);
-	time(&time2);
-	printTime(time1, time2, "sequential");
-	
-	if (DBG) {
-		printArray(numbersSeq, NUMBERS);
+
+	if (!SHOWTIME) {
+		int* numbersSeq = (int*)malloc(numbersSize);
+		
+		fillArrayWithNumbers(numbersSeq);
+		memcpy(numbersPar, numbersSeq, numbersSize);
+
+		time(&time1);
+		mergeSortSequential(numbersSeq, 0, NUMBERS - 1, tmp);
+		time(&time2);
+		printTime(time1, time2, "sequential");
+
+		free(tmp);
+		tmp = (int*)malloc(numbersSize);
+	}
+	else {
+		fillArrayWithNumbers(numbersPar);
 	}
 	
-	free(tmp);
-	tmp = (int*)malloc(numbersSize);
-	
 	time(&time1);
-#pragma omp parallel num_threads(NUM_THREADS)
+#pragma omp parallel 
 #pragma omp single
 		{
 			mergeSortParallel(numbersPar, 0, NUMBERS - 1, tmp);
@@ -231,14 +228,3 @@ int main() {
 	
 	return 0;
 }
-
-/* optimizations:
- 1. generating numbers in parallel
- 2. prealokowanie pamiêci raz zamiast alokowania przy ka¿dym merge'owaniu (szybciej + wiêcej liczb)
- 3. sections -> tasks
- 4. parallel & sequential with threshold
-
- TODO: 
- - fix parallel generating numbers
- */
-
