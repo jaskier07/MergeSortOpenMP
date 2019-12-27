@@ -11,7 +11,7 @@
 #define SHOWTIME 0
 
 #define NUMBERS_BIG 100000000 //2000000
-#define NUMBERS_DBG 4096
+#define NUMBERS_DBG 128
 
 #define MAX_BIG 100000 //1000000
 #define MAX_DBG 99
@@ -43,15 +43,6 @@ bool checkForError(const cudaError_t cudaStatus, const char text[]) {
 }
 
 /* info */
-__device__
-void inlinePrintArray(int* A, int from, int to) {
-	printf("[ "); 
-	for (int i = from; i <= to; i++) {
-		printf("%[%d]%d, ", i, A[i]);
-	}
-	printf(" ]");
-}
-
 void printArray(int* A, int size) {
 	printf("\n");
 	for (int i = 0; i < size; i++) {
@@ -65,19 +56,9 @@ void printTime(time_t t1, time_t t2, const char* solutionType) {
 	printf("\nTime in seconds (mergesort %s): %f", solutionType, difftime(t2, t1));
 }
 
-/* debug */
-__device__
-void debugPrintMergeSort(int* arr, int left_start, int right_start, const char c[]) {
-	//if (DBG) {
-		printf("\n%c%c <%d, %d> ",  c[0], c[1], left_start, right_start);
-		inlinePrintArray(arr, left_start, right_start);
-		//fflush(stdout);
-	//}
-}
-
-void checkIfCorrectlySorted(int* arr, int from, int to) {
+void checkIfCorrectlySorted(int* arr) {
 	bool correct = true;
-	for (int i = from; i < to; i++) {
+	for (int i = 0; i < NUMBERS - 1; i++) {
 		if (arr[i] > arr[i + 1]) {
 			printf("\n\n-----------ERROR!-----------%d\n\n ", i);
 			correct = false;
@@ -102,39 +83,36 @@ void fillArrayWithNumbers(int* numbers) {
 	}
 }
 
-/* Function to merge the two haves arr[l..m] and arr[m+1..r] of array arr[] */
+__host__
 __device__
-void merge(int arr[], int left_start, int mid, int right_start, int* tmp) {
-	//if (DBG) {
-		/*printf("\nmerge: [ ");
-		inlinePrintArray(arr, left_start, mid);
-		printf(" ] with [ ");
-		inlinePrintArray(arr, mid, right_start);
-		printf(" ]");
-		fflush(stdout);*/
-	//}
+int getMid(int start, int end) {
+	return start + (end - start) / 2;
+}
 
+__host__
+__device__
+void merge(int* arr, int* tmp, int leftStart, int rightEnd, int mid) {
 	int i, j, k;
-	int left_half_size = mid - left_start + 1;
-	int right_half_size = right_start - mid;
+	int leftHalfSize = mid - leftStart + 1;
+	int rightHalfSize = rightEnd - mid;
 
 	/* create temp arrays */
-	int* L = &tmp[left_start];
+	int* L = &tmp[leftStart];
 	int* R = &tmp[mid + 1];
 
 	/* Copy data to temp arrays L[] and R[] */
-	for (i = 0; i < left_half_size; i++) {
-		L[i] = arr[left_start + i];
+	for (i = 0; i < leftHalfSize; i++) {
+		L[i] = arr[leftStart + i];
 	}
-	for (j = 0; j < right_half_size; j++) {
+	for (j = 0; j < rightHalfSize; j++) {
 		R[j] = arr[mid + 1 + j];
 	}
 
 	/* Merge the temp arrays back into arr[l..r]*/
 	i = 0;
 	j = 0;
-	k = left_start;
-	while (i < left_half_size && j < right_half_size) {
+	k = leftStart;
+	while (i < leftHalfSize && j < rightHalfSize) {
 		if (L[i] <= R[j]) {
 			arr[k] = L[i];
 			i++;
@@ -147,91 +125,51 @@ void merge(int arr[], int left_start, int mid, int right_start, int* tmp) {
 	}
 
 	/* Copy the remaining elements of L[], if there are any */
-	while (i < left_half_size) {
+	while (i < leftHalfSize) {
 		arr[k] = L[i];
 		i++;
 		k++;
 	}
 
 	/* Copy the remaining elements of R[], if there are any */
-	while (j < right_half_size) {
+	while (j < rightHalfSize) {
 		arr[k] = R[j];
 		j++;
 		k++;
-	}
+	}	
 }
 
-__device__
-void mergeSort(int* arr, int left_start, int right_start, int* tmp) {
-	if (left_start < right_start)
-	{
-		int m = left_start + (right_start - left_start) / 2;
-
-		//debugPrintMergeSort(arr, left_start, m, "l ");
-		mergeSort(arr, left_start, m, tmp);
-
-		//debugPrintMergeSort(arr, m + 1, right_start, "r ");
-		mergeSort(arr, m + 1, right_start, tmp);
-
-		merge(arr, left_start, m, right_start, tmp);
-		//debugPrintMergeSort(arr, left_start, right_start, "m ");
-	}
-}
-
+/* Function to merge the two haves arr[l..m] and arr[m+1..r] of array arr[] */
 __global__
-void mergeSortGlobal(int* arr, int* tmp, int vectorLengthPerThread) {
+void mergeKernel(int* arr, int* tmp, int vectorLengthPerThread, int vectorLength) {
 	int threadId = blockDim.x * blockIdx.x + threadIdx.x;
-	int left_start = threadId * vectorLengthPerThread;
-	int right_end = left_start + vectorLengthPerThread - 1;
-
-	if (left_start < right_end)
-	{
-		// Same as (l+r)/2, but avoids overflow for large l and h 
-		int m = left_start + (right_end - left_start) / 2;
-
-		// Sort first and second halves 
-		//debugPrintMergeSort(arr, left_start, m, "gl");
-		mergeSort(arr, left_start, m, tmp);
-
-		//debugPrintMergeSort(arr, m + 1, right_end, "gr");
-		mergeSort(arr, m + 1, right_end, tmp);
-
-		merge(arr, left_start, m, right_end, tmp);
-		//debugPrintMergeSort(arr, left_start, right_end, "gm");
+	int leftStart = threadId * vectorLengthPerThread;
+	int rightEnd = leftStart + vectorLengthPerThread - 1;
+	int mid = getMid(leftStart, rightEnd);
+	
+	if (leftStart < vectorLength) {
+		printf("\n thread: %d, <%d, %d>, mid %d", threadId, leftStart, rightEnd, mid);
+		merge(arr, tmp, leftStart, rightEnd, mid);
 	}
 }
+
 
 int main() {
-	const int threadsInBlock = 64; // 256
-	const int vectorLengthPerThread = 64;
-	const int numBlocks = ceil(NUMBERS / threadsInBlock / vectorLengthPerThread);
-	printf("\nConfiguration: vector length: %d, threads per block: %d, vector length per thread: %d, num blocks: %d",
-		NUMBERS, threadsInBlock, vectorLengthPerThread, numBlocks);
-
+	const int vectorLength = NUMBERS;
+	const int threadsPerBlock = 64; // FIXME // 128
+	int vectorLengthPerThread = 2; // FIXME
+	const int vectorMultiplier = 2; // FIXME
+	const int numBlocks = ceil(vectorLength / threadsPerBlock);
+	const int blockVectorLength = vectorLength / numBlocks;
 	const int vectorSizeInBytes = NUMBERS * sizeof(int);
+	
+	printf("\nConfiguration: vector length: %d, threads per block: %d, vector length per thread: %d, num blocks: %d",
+		NUMBERS, threadsPerBlock, vectorLengthPerThread, numBlocks);
 
-	//time_t time1, time2;
 	int* tmp = (int*)malloc(vectorSizeInBytes);
 	int* vector = (int*)malloc(vectorSizeInBytes);
 
-	//if (!SHOWTIME) {
-		/*	int* numbersSeq = (int*)malloc(numbersSize);
-
-			fillArrayWithNumbers(numbersSeq);
-			memcpy(numbersPar, numbersSeq, numbersSize);
-
-			time(&time1);
-			mergeSortSequential(numbersSeq, 0, NUMBERS - 1, tmp);
-			time(&time2);
-			printTime(time1, time2, "sequential");
-
-			free(tmp);
-			tmp = (int*)malloc(numbersSize);
-			*/
-			/*}
-			else {*/
 	fillArrayWithNumbers(vector);
-	//}
 
 	int* dev_input = NULL;
 	int* dev_tmp = NULL;
@@ -257,22 +195,37 @@ int main() {
 		return cudaStatus;
 	}
 
-	mergeSortGlobal <<<numBlocks, threadsInBlock >>> (dev_input, dev_tmp, vectorLengthPerThread);
-	cudaStatus = cudaGetLastError();
-	if (checkForError(cudaStatus, "mergeSortGlobal launch failed!", dev_input, dev_tmp)) {
-		return cudaStatus;
+	for (int i = 0; vectorLengthPerThread < blockVectorLength; i++,vectorLengthPerThread *= vectorMultiplier)  {		
+		printf("\nIter: %d, vector length per thread: %d", i, vectorLengthPerThread);
+		
+		mergeKernel<<<numBlocks, threadsPerBlock>>>(dev_input, dev_tmp, vectorLengthPerThread, vectorLength);
+		
+		cudaStatus = cudaGetLastError();
+		if (checkForError(cudaStatus, "mergeSortGlobal launch failed!", dev_input, dev_tmp)) {
+			return cudaStatus;
+		}		
+		cudaStatus = cudaDeviceSynchronize();
+		if (checkForError(cudaStatus, "cudaDeviceSynchronize on \"mergeSortGlobal\" returned error code.", dev_input, dev_tmp)) {
+			return cudaStatus;
+		}
+		
+		if (DBG) {
+			cudaStatus = cudaMemcpy(vector, dev_input, vectorSizeInBytes, cudaMemcpyDeviceToHost);
+			if (checkForError(cudaStatus, "cudaMemcpy (dev_input -> vector) failed!")) {
+				return cudaStatus;
+			}
+			printArray(vector, vectorLength);
+		}
 	}
 
-	cudaStatus = cudaDeviceSynchronize();
-	if (checkForError(cudaStatus, "cudaDeviceSynchronize on \"mergeSortGlobal\" returned error code.", dev_input, dev_tmp)) {
-		return cudaStatus;
+	if (!DBG) {
+		cudaStatus = cudaMemcpy(vector, dev_input, vectorSizeInBytes, cudaMemcpyDeviceToHost);
+		if (checkForError(cudaStatus, "cudaMemcpy (dev_input -> vector) failed!")) {
+			return cudaStatus;
+		}
 	}
-
-	cudaStatus = cudaMemcpy(vector, dev_input, vectorSizeInBytes, cudaMemcpyDeviceToHost);
-	if (checkForError(cudaStatus, "cudaMemcpy (dev_input -> vector) failed!")) {
-		return cudaStatus;
-	}
-	//printTime(time1, time2, "parallel");
+	
+	merge(vector, tmp, 0, NUMBERS - 1, getMid(0, NUMBERS - 1));
 
 	cudaFree(dev_input);
 	cudaFree(dev_tmp);
@@ -280,19 +233,12 @@ int main() {
 	if (checkForError(cudaStatus, "cudaDeviceReset failed!")) {
 		return 1;
 	}
-	
-	
-	int currNumber = 0;
-	for (int i = 0; i < numBlocks * threadsInBlock; i++) {
-		checkIfCorrectlySorted(vector, currNumber, currNumber + vectorLengthPerThread - 1);
-		currNumber += vectorLengthPerThread;
-	}
 
 	if (DBG) {
 		printArray(vector, NUMBERS);
 	}
 	fflush(stdout);
-	//checkIfCorrectlySorted(vector);
+	checkIfCorrectlySorted(vector);
 
 	return 0;
 }
