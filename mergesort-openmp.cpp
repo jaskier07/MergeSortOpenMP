@@ -140,7 +140,7 @@ void merge(int arr[], int left_start, int mid, int right_start, int* tmp) {
 	}
 }
 
-void mergeSortSequential(int* arr, int left_start, int right_start, int* tmp) {
+void mergeSort(int* arr, int left_start, int right_start, int* tmp) {
 	if (left_start < right_start)
 	{
 		// Same as (l+r)/2, but avoids overflow for large l and h 
@@ -148,10 +148,10 @@ void mergeSortSequential(int* arr, int left_start, int right_start, int* tmp) {
 
 		// Sort first and second halves 
 		debugPrintMergeSort(arr, left_start, m, 'l');
-		mergeSortSequential(arr, left_start, m, tmp);
+		mergeSort(arr, left_start, m, tmp);
 
 		debugPrintMergeSort(arr, m + 1, right_start, 'r');
-		mergeSortSequential(arr, m + 1, right_start, tmp);
+		mergeSort(arr, m + 1, right_start, tmp);
 
 		merge(arr, left_start, m, right_start, tmp);
 		debugPrintMergeSort(arr, left_start, right_start, 'm');
@@ -181,7 +181,7 @@ void mergeSortParallel(int* arr, int left_start, int right_start, int* tmp) {
 			merge(arr, left_start, m, right_start, tmp);
 		}
 		else {
-			mergeSortSequential(arr, left_start, right_start, tmp);
+			mergeSort(arr, left_start, right_start, tmp);
 		}
 	}
 }
@@ -201,7 +201,7 @@ int main() {
 		memcpy(numbersPar, numbersSeq, numbersSize);
 
 		time(&time1);
-		mergeSortSequential(numbersSeq, 0, NUMBERS - 1, tmp);
+		mergeSort(numbersSeq, 0, NUMBERS - 1, tmp);
 		time(&time2);
 		printTime(time1, time2, "sequential");
 
