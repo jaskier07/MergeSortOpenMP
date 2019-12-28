@@ -7,11 +7,12 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
-#define DBG 0
+#define HARD_DBG 0
+#define DBG 1
 #define SHOWTIME 0
 
-#define NUMBERS_BIG 2097152//1048576 //100 000 000 //2000000
-#define NUMBERS_DBG 128
+#define NUMBERS_BIG 4194304*2//4 194 304 //100 000 000 //2000000
+#define NUMBERS_DBG 4194304 //128
 
 #define MAX_BIG 100000 //1000000
 #define MAX_DBG 999
@@ -23,7 +24,7 @@
 #define VECTOR_MULTIPLIER 2
 
 /* cuda errors */
-bool checkForError(const cudaError_t cudaStatus, const char text[], int* dev_input, int* dev_tmp) {
+bool checkForError(const cudaError_t cudaStatus, const char text[], short* dev_input, short* dev_tmp=NULL) {
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "\n\n%s \nError code: %d \nStatus: %s \n\n", text, cudaStatus, cudaGetErrorString(cudaStatus));
 		if (dev_input != NULL) {
@@ -46,7 +47,7 @@ bool checkForError(const cudaError_t cudaStatus, const char text[]) {
 }
 
 /* info */
-void printArray(int* A, int size) {
+void printArray(short* A, int size) {
 	printf("\n");
 	for (int i = 0; i < size; i++) {
 		printf("%d, ", A[i]);
@@ -55,33 +56,25 @@ void printArray(int* A, int size) {
 	fflush(stdout);
 }
 
-void printTime(time_t t1, time_t t2, const char* solutionType) {
-	printf("\nTime in seconds (mergesort %s): %f", solutionType, difftime(t2, t1));
-}
-
-void checkIfCorrectlySorted(int* arr) {
-	bool correct = true;
+void checkIfCorrectlySorted(short* arr) {
 	for (int i = 0; i < NUMBERS - 1; i++) {
 		if (arr[i] > arr[i + 1]) {
 			printf("\n\n-----------ERROR!-----------%d\n\n ", i);
-			correct = false;
-			break;
+			return;
 		}
 	}
-	if (correct) {
-		printf("\n----------- OK ------------");
-	}
+	printf("\n----------- OK ------------");
 }
 
 /* merge sort */
-void fillArrayWithNumbers(int* numbers) {
+void fillArrayWithNumbers(short* numbers) {
 	int i;
 	srand(time(NULL));
 	for (i = 0; i < NUMBERS; i++) {
 		numbers[i] = rand() % MAX_NUMBER;
 	}
 
-	if (DBG) {
+	if (HARD_DBG) {
 		printArray(numbers, NUMBERS);
 	}
 }
@@ -94,15 +87,13 @@ int getMid(int start, int end) {
 
 __host__
 __device__
-void merge(int* arr, int* tmp, int leftStart, int rightEnd, int mid) {
+void merge(short* arr, int leftStart, int rightEnd, int mid, int tmpIndexStart) {
 	int i, j, k;
 	int leftHalfSize = mid - leftStart + 1;
 	int rightHalfSize = rightEnd - mid;
 
-	/* create temp arrays */
-	int* L = &tmp[leftStart];
-	int* R = &tmp[mid + 1];
-
+	short* L = &arr[tmpIndexStart + leftStart];
+	short* R = &arr[tmpIndexStart + mid + 1];
 	/* Copy data to temp arrays L[] and R[] */
 	for (i = 0; i < leftHalfSize; i++) {
 		L[i] = arr[leftStart + i];
@@ -110,7 +101,6 @@ void merge(int* arr, int* tmp, int leftStart, int rightEnd, int mid) {
 	for (j = 0; j < rightHalfSize; j++) {
 		R[j] = arr[mid + 1 + j];
 	}
-
 	/* Merge the temp arrays back into arr[l..r]*/
 	i = 0;
 	j = 0;
@@ -126,7 +116,6 @@ void merge(int* arr, int* tmp, int leftStart, int rightEnd, int mid) {
 		}
 		k++;
 	}
-
 	/* Copy the remaining elements of L[], if there are any */
 	while (i < leftHalfSize) {
 		arr[k] = L[i];
@@ -143,72 +132,69 @@ void merge(int* arr, int* tmp, int leftStart, int rightEnd, int mid) {
 }
 
 __global__
-void mergeKernel(int* arr, int* tmp, int vectorLengthPerThread, int vectorLength) {
+void mergeKernel(short* arr, int vectorLengthPerThread, int vectorLength, int tmpIndexStart) {
 	int threadId = blockDim.x * blockIdx.x + threadIdx.x;
 	int leftStart = threadId * vectorLengthPerThread;
 	int rightEnd = leftStart + vectorLengthPerThread - 1;
 	int mid = getMid(leftStart, rightEnd);
 	
 	if (leftStart < vectorLength) {
-		//printf("\n thread: %d, <%d, %d>, mid %d", threadId, leftStart, rightEnd, mid);
-		merge(arr, tmp, leftStart, rightEnd, mid);
+		if (HARD_DBG) {
+			printf("\n thread: %d, <%d, %d>, mid %d", threadId, leftStart, rightEnd, mid);
+		}
+		merge(arr, leftStart, rightEnd, mid, tmpIndexStart);
 	}
 }
 
 
-void mergeSort(int* arr, int* tmp, int leftStart, int rightEnd, int minVectorLength) {
+void mergeSort(short* arr,int leftStart, int rightEnd, int minVectorLength, int tmpIndexStart) {
 	if (leftStart < rightEnd && rightEnd - leftStart > minVectorLength) {
-		if (DBG) {
+		if (HARD_DBG) {
 			printf("\n<%d,%d> minVec: %d", leftStart, rightEnd, minVectorLength);
 		}
 		int m = getMid(leftStart, rightEnd);
-		mergeSort(arr, tmp, leftStart, m, minVectorLength);
-		mergeSort(arr, tmp, m + 1, rightEnd, minVectorLength);
-		merge(arr, tmp, leftStart, rightEnd, m);
+		mergeSort(arr, leftStart, m, minVectorLength, tmpIndexStart);
+		mergeSort(arr, m + 1, rightEnd, minVectorLength, tmpIndexStart);
+		merge(arr, leftStart, rightEnd, m, tmpIndexStart);
 	}
 }
 
 int main() {
-	printf("SHORRT!: %d", sizeof(short));
-	const int vectorSizeInBytes = NUMBERS * sizeof(int);
-	int* tmp = (int*)malloc(vectorSizeInBytes);
-	int* vector = (int*)malloc(vectorSizeInBytes);
+	const int vectorSizeInBytes = NUMBERS * sizeof(short) * 2;
+	int tmpIndexStart = NUMBERS;
+	//short* tmp = (short*)malloc(vectorSizeInBytes);
+	short* vector = (short*)malloc(vectorSizeInBytes);
 
 	fillArrayWithNumbers(vector);
 
-	int* dev_input = NULL;
-	int* dev_tmp = NULL;
+	short* dev_input = NULL;
+	//short* dev_tmp = NULL;
 	cudaError_t cudaStatus;
 
 	cudaStatus = cudaSetDevice(0);
-	if (checkForError(cudaStatus, "cudaSetDevice failed! Do you have a CUDA-capable GPU installed?", dev_input, dev_tmp)) {
+	if (checkForError(cudaStatus, "cudaSetDevice failed! Do you have a CUDA-capable GPU installed?", dev_input)) {
 		return cudaStatus;
 	}
 
 	cudaStatus = cudaMalloc((void**)&dev_input, vectorSizeInBytes);
-	if (checkForError(cudaStatus, "cudaMalloc (dev_input) failed!", dev_input, dev_tmp)) {
+	if (checkForError(cudaStatus, "cudaMalloc (dev_input) failed!", dev_input)) {
 		return cudaStatus;
 	}
-
-	cudaStatus = cudaMalloc((void**)&dev_tmp, vectorSizeInBytes);
-	if (checkForError(cudaStatus, "cudaMalloc (dev_tmp) failed!", dev_input, dev_tmp)) {
-		return cudaStatus;
-	}
-
+	
 	cudaStatus = cudaMemcpy(dev_input, vector, vectorSizeInBytes, cudaMemcpyHostToDevice);
-	if (checkForError(cudaStatus, "cudaMemcpy (vector -> dev_input) failed!", dev_input, dev_tmp)) {
+	if (checkForError(cudaStatus, "cudaMemcpy (vector -> dev_input) failed!", dev_input)) {
 		return cudaStatus;
 	}
 	
 	const int vectorLength = NUMBERS;
-	int threadsPerBlock = THREADS_PER_BLOCK; // FIXME // 128
-	int vectorLengthPerThread = VECTOR_LENGTH_PER_THREAD; // FIXME
-	const int vectorMultiplier = VECTOR_MULTIPLIER; // FIXME
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int vectorLengthPerThread = VECTOR_LENGTH_PER_THREAD;
+	const int vectorMultiplier = VECTOR_MULTIPLIER;
 	int numBlocks = ceil(vectorLength / threadsPerBlock);
 	const int blockVectorLength = vectorLength / numBlocks;
 	
 	printf("\nConfiguration: vector length: %d, threads per block: %d, vector length per thread: %d, num blocks: %d, block vector length: %d\n",
-		NUMBERS, threadsPerBlock, vectorLengthPerThread, numBlocks,blockVectorLength);
+		NUMBERS, threadsPerBlock, vectorLengthPerThread, numBlocks, blockVectorLength);
 
 	int i = 0;
 	while (vectorLengthPerThread <= blockVectorLength) {		
@@ -216,20 +202,20 @@ int main() {
 			printf("\nIter: %d, vector length per thread: %d", i++, vectorLengthPerThread);
 		}
 		
-		mergeKernel<<<numBlocks, threadsPerBlock>>>(dev_input, dev_tmp, vectorLengthPerThread, vectorLength);
+		mergeKernel<<<numBlocks, threadsPerBlock>>>(dev_input, vectorLengthPerThread, vectorLength, tmpIndexStart);
 		
 		cudaStatus = cudaGetLastError();
-		if (checkForError(cudaStatus, "mergeKernel launch failed!", dev_input, dev_tmp)) {
+		if (checkForError(cudaStatus, "mergeKernel launch failed!", dev_input)) {
 			return cudaStatus;
 		}		
 		cudaStatus = cudaDeviceSynchronize();
-		if (checkForError(cudaStatus, "cudaDeviceSynchronize on \"mergeKernel\" returned error code.", dev_input, dev_tmp)) {
+		if (checkForError(cudaStatus, "cudaDeviceSynchronize on \"mergeKernel\" returned error code.", dev_input)) {
 			return cudaStatus;
 		}
 		
 		vectorLengthPerThread *= vectorMultiplier;
 		
-		if (DBG) {
+		if (HARD_DBG) {
 			cudaStatus = cudaMemcpy(vector, dev_input, vectorSizeInBytes, cudaMemcpyDeviceToHost);
 			if (checkForError(cudaStatus, "cudaMemcpy (dev_input -> vector) failed!")) {
 				return cudaStatus;
@@ -238,20 +224,19 @@ int main() {
 		}
 	}	
 
-	if (!DBG) {
+	if (!HARD_DBG) {
 		cudaStatus = cudaMemcpy(vector, dev_input, vectorSizeInBytes, cudaMemcpyDeviceToHost);
 		if (checkForError(cudaStatus, "cudaMemcpy (dev_input -> vector) failed!")) {
 			return cudaStatus;
 		}
 	}
 	
-	mergeSort(vector, tmp, 0, NUMBERS - 1, blockVectorLength);
-	if (DBG) {
+	mergeSort(vector, 0, NUMBERS - 1, blockVectorLength, tmpIndexStart);
+	if (HARD_DBG) {
 		printArray(vector, vectorLength);
 	}
 
 	cudaFree(dev_input);
-	cudaFree(dev_tmp);
 	cudaStatus = cudaDeviceReset();
 	if (checkForError(cudaStatus, "cudaDeviceReset failed!")) {
 		return 1;
