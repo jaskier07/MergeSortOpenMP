@@ -7,19 +7,19 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
-#define PROGRAM_STATE 2
+#define PROGRAM_STATE 1
 
 #define HARD_DBG 2
 #define DBG 1
 
 #define VECTOR_SIZE_STD 4194304*2 ///100 000 000
-#define VECTOR_SIZE_DBG 128 // 128
+#define VECTOR_SIZE_DBG 4194304*2*2 // 128
 
 #define VECTOR_MAX_NUMBER_STD 999 //1000000
 #define VECTOR_MAX_NUMBER_DBG 100 // 100
 
 #define THREADS_PER_BLOCK_STD 512
-#define THREADS_PER_BLOCK_DBG 32 // 32
+#define THREADS_PER_BLOCK_DBG 128 // 32
 
 #define VECTOR_LENGTH_PER_THREAD_STD 32
 #define VECTOR_LENGTH_PER_THREAD_DBG 2 //2
@@ -149,17 +149,26 @@ void mergeKernel(short* arr, int vectorLengthPerThread, int vectorLength, int tm
 	}
 }
 
-
-void mergeSort(short* arr,int leftStart, int rightEnd, int minVectorLength, int tmpIndexStart) {
-	if (leftStart < rightEnd && rightEnd - leftStart >= minVectorLength) {
+__host__
+__device__
+void mergeSort(short* arr,int leftStart, int rightEnd, int minVectorLength, int vectorLength, int tmpIndexStart) {
+	if (leftStart < rightEnd && rightEnd - leftStart >= minVectorLength && rightEnd <= vectorLength) {
 		if (PROGRAM_STATE >= HARD_DBG) {
 			printf("\n<%d,%d> minVec: %d", leftStart, rightEnd, minVectorLength);
 		}
 		int m = getMid(leftStart, rightEnd);
-		mergeSort(arr, leftStart, m, minVectorLength, tmpIndexStart);
-		mergeSort(arr, m + 1, rightEnd, minVectorLength, tmpIndexStart);
+		mergeSort(arr, leftStart, m, minVectorLength, vectorLength, tmpIndexStart);
+		mergeSort(arr, m + 1, rightEnd, minVectorLength, vectorLength, tmpIndexStart);
 		merge(arr, leftStart, rightEnd, m, tmpIndexStart);
 	}
+}
+
+__global__
+void mergeSortKernel(short* arr, int vectorLengthPerThread, int minVectorLength, int vectorLength, int tmpIndexStart) {
+	int threadId = blockDim.x * blockIdx.x + threadIdx.x;
+	int leftStart = threadId * vectorLengthPerThread;
+	int rightEnd = leftStart + vectorLengthPerThread - 1;
+	mergeSort(arr, leftStart, rightEnd, minVectorLength, vectorLength, tmpIndexStart);
 }
 
 int main() {
@@ -201,7 +210,7 @@ int main() {
 			printf("\nIter: %d, vector length per thread: %d", i++, vectorLengthPerThread);
 		}
 		
-		mergeKernel<<<numBlocks, threadsPerBlock>>>(dev_input, vectorLengthPerThread, vectorLength, tmpIndexStart);
+		mergeSortKernel<<<numBlocks, threadsPerBlock>>>(dev_input, vectorLengthPerThread, vectorLengthPerThread / VECTOR_LENGTH_PER_THREAD, vectorLength, tmpIndexStart);
 		
 		cudaStatus = cudaGetLastError();
 		if (checkForError(cudaStatus, "mergeKernel launch failed!", dev_input)) {
@@ -230,7 +239,7 @@ int main() {
 		}
 	}
 	
-	mergeSort(vector, 0, vectorLength - 1, blockVectorLength, tmpIndexStart);
+	mergeSort(vector, 0, vectorLength - 1, blockVectorLength, vectorLength, tmpIndexStart);
 	if (PROGRAM_STATE >= HARD_DBG) {
 		printArray(vector, vectorLength);
 	}
